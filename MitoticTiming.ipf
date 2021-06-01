@@ -74,7 +74,7 @@ Function LoadDataFromExcel(filePath)
 			Wave w0 = $wName
 			length = numpnts(w0)
 			if (length < nCell)
-				InsertPoints length, (nCell - length), w0 // add NaNs if necessary
+				InsertPoints/V=(NaN) length, (nCell - length), w0 // add NaNs if necessary
 			endif
 		endfor	
 		// make matrix
@@ -142,7 +142,7 @@ End
 Function MakeHistograms()
 	WAVE/Z/T condWave
 	WAVE/Z settingsMT
-	Variable tStep = settingsMT[0]
+	Variable rate = settingsMT[0]
 	
 	Variable nCond = numpnts(condWave)
 	MakeColorWave(nCond,"colorWave",alpha = 32639)
@@ -179,8 +179,8 @@ Function MakeHistograms()
 			wName = condWave[j] + "_" + StringFromList(i,plotList)
 			Wave w0 = $wName
 			histName = wName + "_hist"
-			Make/O/N=(ceil((maxLength) / tStep) + 2) $histName
-			Histogram/P/CUM/B={0,3,ceil((maxLength) / tStep) + 2} w0,$histName
+			Make/O/N=(ceil((maxLength) / rate) + 2) $histName
+			Histogram/P/CUM/B={0,3,ceil((maxLength) / rate) + 2} w0,$histName
 			Wave w1 = $histName
 			if(settingsMT[1] == 1)
 				ScaleHisto(w0,w1)
@@ -217,6 +217,38 @@ Function MakeHistograms()
 	// lengendStr should still be correct
 	FormatHisto(plotName, legendStr, "")
 	AppendLayoutObject/W=summaryLayout graph $plotName
+	Variable mostCells = 0
+	Variable mostTime = 0
+	
+	// stick diagrams
+	for(i = 0; i < nCond; i += 1)
+		plotname = "s_" + condWave[i]
+		KillWindow/Z $plotName
+		Display/HIDE=1/N=$plotName
+		MakeSticks(condWave[i])
+		wName = condWave[i] + "_sticks"
+		Wave w0 = $wName
+		AppendToGraph/W=$plotName w0[][1] vs w0[][0]
+		ModifyGraph/W=$plotName rgb($wName)=(colorWave[i][0],colorWave[i][1],colorWave[i][2],colorWave[i][3])
+		mostCells = max(mostCells,numpnts(w0) / 8) // sticks wave has 8 points per cell
+		WaveStats/Q/RMD=[][0] w0
+		mostTime = max(mostTime, max(V_max,-V_min))
+	endfor
+	// axes and formatting
+	for(i = 0; i < nCond; i += 1)
+		plotname = "s_" + condWave[i]
+		SetAxis/W=$plotName left -1, mostCells
+		SetAxis/W=$plotName bottom -mostTime, mostTime
+		ModifyGraph/W=$plotName mode=0,lsize=2
+		ModifyGraph/W=$plotName noLabel(left)=2,axThick(left)=0,standoff=0
+		ModifyGraph/W=$plotName margin(left)=21,margin(right)=21
+		Label/W=$plotName bottom "Duration (min)"
+		TextBox/W=$plotName/C/N=text0/F=0/S=3/A=RT/X=0.00/Y=0.00 condWave[i]
+		SetDrawEnv/W=$plotName xcoord= bottom,ycoord= left,linefgc= (30583,30583,30583),dash= 3
+		DrawLine/W=$plotName 0,-1,0,mostCells
+		AppendLayoutObject/W=summaryLayout graph $plotName
+	endfor
+	
 	
 	// now add duration vs onset
 	for(i = 0; i < nPlots; i += 1)
@@ -268,6 +300,43 @@ STATIC Function FormatHisto(plotName, legendStr, labelStr)
 	ModifyGraph/W=$plotName lsize=2
 End
 
+STATIC Function MakeSticks(cond)
+	String cond
+	WAVE/Z settingsMT
+	
+	Duplicate/O $(cond + "_frames"), $(cond + "_times")
+	Wave timeW = $(cond + "_times")
+	timeW[][] *= settingsMT[0]
+	// now we have a 2D wave with 3 columns of *times*, offset to metaphase
+	Duplicate/O/FREE/RMD=[][1] timeW, justTimeW
+	timeW[][] = timeW[p][q] - justTimeW[p][0]
+	// if we unset failOpt, we'll remove any rows with a NaN
+	if(settingsMT[1] == 0)
+		MatrixOp/O timeW = zapnans(timeW)
+	endif
+	if(settingsMT[2] == 0) // order by NM
+		Duplicate/O/RMD=[][0]/FREE timeW, sortW	
+		sortW = norm(sortW)
+	elseif(settingsMT[2] == 1) // order by MA
+		Duplicate/O/RMD=[][2]/FREE timeW, sortW	
+	elseif(settingsMT[2] == 2) // order by NA
+		Duplicate/O/RMD=[][2]/FREE timeW, sortW	
+		sortW[] = timeW[p][2] - timeW[p][0]
+	endif
+	Make/O/N=(numpnts(sortW))/FREE indexW = p
+	Sort/R sortW, sortW,indexW
+	Make/O/N=(DimSize(timeW,0),DimSize(timeW,1)) $(cond + "_timesY")
+	Wave yW = $(cond + "_timesY")
+	yW[][] = IndexW[p]
+	Make/O/N=(DimSize(timeW,0))/FREE blank=NaN
+	Concatenate/O/NP=1 {timeW,blank}, timeW
+	Concatenate/O/NP=1 {yW,blank}, yW
+	MatrixTranspose timeW
+	MatrixTranspose yW
+	Redimension/N=(numpnts(timeW)) timeW
+	Redimension/N=(numpnts(yW)) yW
+	Concatenate/O/NP=1/KILL {timeW,yW}, $(cond + "_sticks")
+End
 
 ////////////////////////////////////////////////////////////////////////
 // Panel functions
