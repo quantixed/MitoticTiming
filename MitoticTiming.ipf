@@ -249,7 +249,6 @@ Function MakeHistograms()
 		AppendLayoutObject/W=summaryLayout graph $plotName
 	endfor
 	
-	
 	// now add duration vs onset
 	for(i = 0; i < nPlots; i += 1)
 		plotname = "q_" + StringFromList(i,plotList)
@@ -312,22 +311,29 @@ STATIC Function MakeSticks(cond)
 	timeW[][] = timeW[p][q] - justTimeW[p][0]
 	// if we unset failOpt, we'll remove any rows with a NaN
 	if(settingsMT[1] == 0)
+		timeW[][] = (numtype(timeW[p][0] + timeW[p][1] + timeW[p][2]) == 2) ? NaN : timeW[p][q] 
 		MatrixOp/O timeW = zapnans(timeW)
+		Redimension/N=(numpnts(timeW) / 3,3) timeW
 	endif
 	if(settingsMT[2] == 0) // order by NM
 		Duplicate/O/RMD=[][0]/FREE timeW, sortW	
-		sortW = norm(sortW)
 	elseif(settingsMT[2] == 1) // order by MA
 		Duplicate/O/RMD=[][2]/FREE timeW, sortW	
 	elseif(settingsMT[2] == 2) // order by NA
 		Duplicate/O/RMD=[][2]/FREE timeW, sortW	
 		sortW[] = timeW[p][2] - timeW[p][0]
 	endif
+	// ensure positive values
+	sortW[] = sqrt(sortW[p] * sortW[p])
+	// complicated sorting procedure
 	Make/O/N=(numpnts(sortW))/FREE indexW = p
 	Sort/R sortW, sortW,indexW
+	Make/O/N=(numpnts(sortW))/FREE newIndexW = p
+	Sort indexW, indexW,newIndexW
 	Make/O/N=(DimSize(timeW,0),DimSize(timeW,1)) $(cond + "_timesY")
 	Wave yW = $(cond + "_timesY")
-	yW[][] = IndexW[p]
+	yW[][] = newIndexW[p]
+	// add blanks and redimension in order to make the stick graph
 	Make/O/N=(DimSize(timeW,0))/FREE blank=NaN
 	Concatenate/O/NP=1 {timeW,blank}, timeW
 	Concatenate/O/NP=1 {yW,blank}, yW
@@ -358,10 +364,16 @@ Function SpecifySettings()
 	SetVariable fileBox,pos={52,43},size={280,14},value= pathWave[0], title=" "
 	// specify timing
 	Variable tStep = 3
-	SetVariable box0,pos={30,70},size={140,14},title="Frame interval (min)",format="%g",value=_NUM:tStep
+	SetVariable box0,pos={180,70},size={140,14},title="Frame interval (min)",format="%g",value=_NUM:tStep
 	// option for show failure to divide
 	Variable failOpt = 1
-	CheckBox box1,pos={30,90},size={20,20},title="Show failure to divide?",value=failOpt,mode=0
+	CheckBox box1,pos={180,90},size={20,20},title="Show failure to divide?",value=failOpt,mode=0
+	// sorting option for stick graph
+	String list = "NEB-Meta;Meta-Ana;NEB-Ana;"
+	String popupStr = "\""+list+"\""
+	// make the popup
+	DrawText/W=MTPanel 10,84,"Sort stick graph by:"
+	PopUpMenu box2,pos={10,90},size={90,14}, bodywidth=90,value= #popupStr, mode = 1
 End
 
 // define buttons
@@ -394,6 +406,8 @@ Function DoItButtonProc(ctrlName) : ButtonControl
 			settingsMT[0] = V_Value			
 			ControlInfo/W=MTPanel box1
 			settingsMT[1] = V_Value
+			ControlInfo/W=MTPanel box2
+			settingsMT[2] = V_Value - 1 // 1-based
 			if(strlen(pathWave[0]) == 0)
 				break
 			endif
