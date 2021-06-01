@@ -182,6 +182,9 @@ Function MakeHistograms()
 			Make/O/N=(ceil((maxLength) / tStep) + 2) $histName
 			Histogram/P/CUM/B={0,3,ceil((maxLength) / tStep) + 2} w0,$histName
 			Wave w1 = $histName
+			if(settingsMT[1] == 1)
+				ScaleHisto(w0,w1)
+			endif
 			AppendToGraph/W=$plotName $histName
 			ModifyGraph/W=$plotName rgb($histName)=(colorWave[j][0],colorWave[j][1],colorWave[j][2],colorWave[j][3])
 			if(j > 0)
@@ -189,7 +192,7 @@ Function MakeHistograms()
 			endif
 			legendStr += "\\s(" + histName + ") " + condWave[j]
 			// add to labelStr
-			labelStr += "\r" + NameOfWave(w0) + " progression: " + num2str(w1[numpnts(w1) - 1]) + " for " + num2str(normVar) + "cells."
+			labelStr += "\r" + NameOfWave(w0) + " progression: " + num2str(round(w1[numpnts(w1) - 1] * numpnts(w0))) + " for " + num2str(numpnts(w0)) + " cells."
 			FindLevel/Q w1, (w1[numpnts(w1) - 1] * 0.5)
 			labelStr += "T-half: " + num2str(V_LevelX)
 		endfor
@@ -242,6 +245,15 @@ Function MakeHistograms()
 	Execute /Q "Tile/A=(6,3)"
 	
 	TextBox/W=summaryLayout/C/N=text0/F=0/A=LB/X=0.00/Y=0.00 labelStr
+End
+
+STATIC Function ScaleHisto(originalW,histW)
+	Wave originalW, histW
+	Duplicate/FREE originalW, tempW
+	WaveTransform zapnans tempW
+	Variable ratio = numpnts(tempW) / numpnts(originalW)
+	
+	histW *= ratio
 End
 
 STATIC Function FormatHisto(plotName, legendStr, labelStr)
