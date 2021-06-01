@@ -6,8 +6,7 @@
 // in 3 columns per sheet (each sheet is a different condition - name is important)
 // Data should start at A1
 
-// At present the time step is hard coded as 3 min
-// Note that intervals of <= 0 are removed
+// Intervals of <= 0 min are removed (assumed to be human error)
 // Cumulative histograms show the full timescale of the data
 // Note that this means that failure to divide needs attention
 
@@ -15,29 +14,35 @@
 // Menu items
 ////////////////////////////////////////////////////////////////////////
 Menu "Macros"
-	"Mitotic Progression...", /Q, MitoticProgression()
+	"Mitotic Timing...", /Q, MitoticTiming()
 End
 
 
 ////////////////////////////////////////////////////////////////////////
 // Master functions and wrappers
 ////////////////////////////////////////////////////////////////////////
-Function MitoticProgression()
+Function MitoticTiming()
 	CleanSlate()
-	LoadDataFromExcel()
-	CalculateTimings(3)
+	SpecifySettings()
+End
+
+Function PostLoadProcess()
+	WAVE/Z settingsMT
+	CalculateTimings(settingsMT[0])
 	MakeHistograms()
 End
 
 ////////////////////////////////////////////////////////////////////////
 // Main functions
 ////////////////////////////////////////////////////////////////////////
-Function LoadDataFromExcel()
+Function LoadDataFromExcel(filePath)
+	String filePath
+	
 	// each experimental condition needs to be a separate sheet
 	String sheet,wList,wName
 	Variable i,j
 	
-	XLLoadWave/J=1
+	XLLoadWave/J=1 filePath
 	if(V_Flag)
 		DoAlert 0, "The user pressed Cancel"
 	endif
@@ -76,6 +81,7 @@ Function LoadDataFromExcel()
 		Concatenate/O/NP=1/KILL nameList, $(sheet + "_frames")
 	endfor
 	// Print "***\r The sheet", sheet, "was loaded from", S_path,"\r  ***"
+	return 0
 End
 
 ///	@param	prefix	string for inserting before each item in list
@@ -135,6 +141,8 @@ End
 
 Function MakeHistograms()
 	WAVE/Z/T condWave
+	WAVE/Z settingsMT
+	Variable tStep = settingsMT[0]
 	
 	Variable nCond = numpnts(condWave)
 	MakeColorWave(nCond,"colorWave",alpha = 32639)
@@ -157,7 +165,7 @@ Function MakeHistograms()
 	for(i = 0; i < nPlots; i += 1)
 		plotname = "p_" + StringFromList(i,plotList)
 		KillWindow/Z $plotName
-		Display/N=$plotName
+		Display/HIDE=1/N=$plotName
 		maxLength = 0
 		legendStr = ""
 		
@@ -171,8 +179,8 @@ Function MakeHistograms()
 			wName = condWave[j] + "_" + StringFromList(i,plotList)
 			Wave w0 = $wName
 			histName = wName + "_hist"
-			Make/O/N=(ceil((maxLength) / 3) + 2) $histName
-			Histogram/P/CUM/B={0,3,ceil((maxLength) / 3) + 2} w0,$histName
+			Make/O/N=(ceil((maxLength) / tStep) + 2) $histName
+			Histogram/P/CUM/B={0,3,ceil((maxLength) / tStep) + 2} w0,$histName
 			Wave w1 = $histName
 			AppendToGraph/W=$plotName $histName
 			ModifyGraph/W=$plotName rgb($histName)=(colorWave[j][0],colorWave[j][1],colorWave[j][2],colorWave[j][3])
@@ -192,7 +200,7 @@ Function MakeHistograms()
 	// make a plot of both
 	plotName = "p_NMNA"
 	KillWindow/Z $plotName
-	Display/N=$plotName
+	Display/HIDE=1/N=$plotName
 	for(i = 0; i < nCond; i += 1)
 		wName = condWave[i] + "_NM"
 		histName = wName + "_hist"
@@ -211,7 +219,7 @@ Function MakeHistograms()
 	for(i = 0; i < nPlots; i += 1)
 		plotname = "q_" + StringFromList(i,plotList)
 		KillWindow/Z $plotName
-		Display/N=$plotName
+		Display/HIDE=1/N=$plotName
 		
 		for(j = 0; j < nCond; j += 1)
 			wName = condWave[j] + "_" + StringFromList(i,plotList)
@@ -247,6 +255,78 @@ STATIC Function FormatHisto(plotName, legendStr, labelStr)
 	TextBox/W=$plotName/C/N=text1/F=0/S=3/A=LT/X=0.00/Y=0.00 labelStr
 	ModifyGraph/W=$plotName lsize=2
 End
+
+
+////////////////////////////////////////////////////////////////////////
+// Panel functions
+///////////////////////////////////////////////////////////////////////
+Function SpecifySettings()
+
+	// make global waves to store settings
+	Make/O/N=(1)/T pathWave
+	Make/O/N=(3) settingsMT
+	DoWindow/K MTPanel
+	NewPanel/N=MTPanel/K=1/W=(40,40,400,200)
+	DrawText/W=MTPanel 10,30,"Mitotic timing data (Excel file)"
+	DrawText/W=MTPanel 10,150,"MitoticTiming"
+	// do it button
+	Button DoIt,pos={240,120},size={100,20},proc=DoItButtonProc,title="Do It"
+	// file button
+	Button fileButton,pos={10,40},size={38,20},proc=ButtonProc,title="File"
+	// file or dir box
+	SetVariable fileBox,pos={52,43},size={280,14},value= pathWave[0], title=" "
+	// specify timing
+	Variable tStep = 3
+	SetVariable box0,pos={30,70},size={140,14},title="Frame interval (min)",format="%g",value=_NUM:tStep
+	// option for show failure to divide
+	Variable failOpt = 1
+	CheckBox box1,pos={30,90},size={20,20},title="Show failure to divide?",value=failOpt,mode=0
+End
+
+// define buttons
+Function ButtonProc(ctrlName) : ButtonControl
+	String ctrlName
+
+	Wave/T/Z pathWave
+	Variable refnum
+	String stringForTextWave
+
+	// get File Path
+	Open/D/R/F="*.xls*"/M="Select Excel Workbook" refNum
+	stringForTextWave = S_filename
+
+	if (strlen(stringForTextWave) == 0) // user pressed cancel
+		return -1
+	endif
+	
+	pathWave[0] = stringForTextWave
+End
+
+Function DoItButtonProc(ctrlName) : ButtonControl
+	String ctrlName
+	WAVE/Z settingsMT
+	WAVE/T/Z pathWave
+
+	strswitch(ctrlName)
+		case "DoIt" :
+			ControlInfo/W=MTPanel box0
+			settingsMT[0] = V_Value			
+			ControlInfo/W=MTPanel box1
+			settingsMT[1] = V_Value
+			if(strlen(pathWave[0]) == 0)
+				break
+			endif
+			if(LoadDataFromExcel(pathWave[0]) == 0)
+				KillWindow/Z MTPanel
+				PostLoadProcess()
+				return 0
+			else
+				return -1
+			endif
+	endswitch
+End
+
+
 
 ////////////////////////////////////////////////////////////////////////
 // Utility functions
