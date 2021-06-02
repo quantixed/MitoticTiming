@@ -239,7 +239,7 @@ Function MakeHistograms()
 		plotname = "s_" + condWave[i]
 		SetAxis/W=$plotName left -1, mostCells
 		SetAxis/W=$plotName bottom -mostTime, mostTime
-		ModifyGraph/W=$plotName mode=0,lsize=2
+		ModifyGraph/W=$plotName mode=0,lsize=1
 		ModifyGraph/W=$plotName noLabel(left)=2,axThick(left)=0,standoff=0
 		ModifyGraph/W=$plotName margin(left)=21,margin(right)=21
 		Label/W=$plotName bottom "Duration (min)"
@@ -312,7 +312,12 @@ STATIC Function MakeSticks(cond)
 	// if we unset failOpt, we'll remove any rows with a NaN
 	if(settingsMT[1] == 0)
 		timeW[][] = (numtype(timeW[p][0] + timeW[p][1] + timeW[p][2]) == 2) ? NaN : timeW[p][q] 
-		MatrixOp/O timeW = zapnans(timeW)
+#if igorversion()>=9
+	MatrixOp/O timeW = zapnans(timeW)
+#elif igorversion()==8 // allow for compilation on Igor Pro 8
+	Redimension/N=(numpnts(timeW)) timeW
+	WaveTransform zapnans timeW
+#endif
 		Redimension/N=(numpnts(timeW) / 3,3) timeW
 	endif
 	if(settingsMT[2] == 0) // order by NM
