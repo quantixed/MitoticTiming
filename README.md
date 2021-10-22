@@ -41,4 +41,5 @@ Using this panel, the user specifies the Excel workbook by clicking _File_.
 
 - `MitoticTiming.ipf` is written for IGOR Pro 9 but it will compile and run on IGOR Pro 8.
 - Use NA, NAN or blank to denote cells that didn't transition. Don't use 0.
+- It is possible to generate a series of PDF reports from a directory of xlsx workbooks, see _Macros_ menu.
 

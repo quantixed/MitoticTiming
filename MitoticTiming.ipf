@@ -15,6 +15,7 @@
 ////////////////////////////////////////////////////////////////////////
 Menu "Macros"
 	"Mitotic Timing...", /Q, MitoticTiming()
+	"Mitotic Timing on Directory", /Q, UseDefaultSettings()
 End
 
 
@@ -30,6 +31,39 @@ Function PostLoadProcess()
 	WAVE/Z settingsMT
 	CalculateTimings(settingsMT[0])
 	MakeHistograms()
+End
+
+Function UseDefaultSettings()
+	CleanSlate()
+	
+	NewPath/O/Q DirOfWorkbooks
+	PathInfo DirOfWorkbooks
+	String pathToDiskFolder = S_Path
+	String fileList = IndexedFile(DirOfWorkbooks,-1,".xlsx")
+	Variable nFiles = ItemsInList(fileList)
+	
+	String xlsName, pdfName
+	Variable i
+	
+	for(i = 0; i < nFiles; i += 1)	
+		Make/O/N=(3) settingsMT = {3,1,0}
+		xlsName = StringFromList(i, fileList)
+		if(stringmatch(xlsName, "*.xls") == 1)
+			pdfName = ReplaceString(".xls", xlsName, ".pdf") // should not use this since we specified xlsx above
+		else
+			pdfName = ReplaceString(".xlsx", xlsName, ".pdf")
+		endif
+		// run code
+		if(LoadDataFromExcel(pathToDiskFolder + xlsName) == 0)
+			CalculateTimings(settingsMT[0])
+			MakeHistograms()
+			DoWindow/F summaryLayout
+			SavePICT/E=-2/W=(0,0,0,0)/P=DirOfWorkbooks/O as pdfName
+			CleanSlate()
+		else
+			return -1
+		endif
+	endfor
 End
 
 ////////////////////////////////////////////////////////////////////////
